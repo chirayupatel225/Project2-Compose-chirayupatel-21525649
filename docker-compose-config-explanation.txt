@@ -1,0 +1,44 @@
+Explanation of the docker-compose.yml Configuration Parameter Selection:
+Jenkins Service:
+	Image: jenkins/jenkins:lts
+		Reason: Uses the Long-Term Support (LTS) version of Jenkins for stability and long-term support with critical updates.
+	User: root
+		Reason: Ensures Jenkins has the necessary permissions to execute Docker commands within the container.
+	Container Name: jenkins
+		Reason: Simplifies identification and management of the Jenkins container.
+	Depends On: dind
+		Reason: Ensures that the dind (Docker-in-Docker) container is started before Jenkins to make Docker available for Jenkins operations.
+	Ports:
+		8080:8080 (Jenkins web interface)
+		50000:50000 (Jenkins agent communication)
+		Reason: Exposes Jenkins web interface and agent communication ports for external access.
+	Volumes:
+		./jenkins:/var/jenkins_home
+		/usr/bin/docker:/usr/bin/docker
+		Reason:
+			./jenkins:/var/jenkins_home mounts the host's jenkins directory to persist Jenkins data.
+			/usr/bin/docker:/usr/bin/docker allows Jenkins to access Docker commands.
+	Environment Variables: DOCKER_HOST: "tcp://dind:2375"
+		Reason: Configures Jenkins to communicate with the Docker daemon in the dind container.
+	Networks: jenkins_dind
+		Reason: Uses the jenkins_dind network for communication between Jenkins and Docker-in-Docker containers.
+
+DinD (Docker-In-Docker) Service:
+	Image: docker:20.10-dind
+		Reason: Provides Docker-in-Docker functionality using the specified Docker version.
+	User: root
+		Reason: Required to run Docker commands and perform privileged operations inside the container.
+	Container Name: dind
+		Reason: Clearly identifies the Docker-in-Docker container.
+	Privileged Mode: true
+		Reason: Necessary for running Docker within Docker to allow full Docker functionality.
+	Expose: 2375
+		Reason: Exposes Docker API on port 2375 for internal communication within the Docker network.
+	Networks: jenkins_dind
+		Reason: Connects to the same network as Jenkins to allow communication between the services.
+	Environment Variables: DOCKER_TLS_CERTDIR: ""
+		Reason: Disables Docker TLS certificates for internal communication.
+
+Networks:
+	jenkins_dind:
+		Reason: Creates a bridge network for communication between Jenkins and Docker-in-Docker services.
