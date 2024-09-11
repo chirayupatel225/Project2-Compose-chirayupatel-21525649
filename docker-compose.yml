@@ -1,37 +1,45 @@
 services:
-  jenkins:
-    image: jenkins/jenkins:lts
-    container_name: jenkins
-    privileged: true
-    environment:
-      - JENKINS_OPTS=--prefix=/jenkins
-      - DOCKER_HOST=tcp://dind:2376
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock # Mount Docker socket for Jenkins to communicate with Docker
-      - jenkins_home:/var/jenkins_home
-    ports:
-      - "8080:8080"
-      - "50000:50000"
-    depends_on:
-      - dind
-
   dind:
-    image: docker:stable-dind
+    image: docker:24.0-dind
     container_name: dind
-    privileged: true
+    user: root
     environment:
       - DOCKER_TLS_CERTDIR=/certs
     volumes:
-      - dind_storage:/var/lib/docker
-      - certs:/certs/client
+      - docker-certs-ca:/certs/ca
+      - docker-certs-client:/certs/client
+      - jenkins-data:/var/jenkins_home
+    networks:
+      jenkins-net:
+        aliases:
+          - docker
+
+  jenkins:
+    image: jenkins/jenkins:lts-jdk11
+    container_name: jenkins
+    user: root
+    environment:
+      - DOCKER_HOST=tcp://docker:2376
+      - DOCKER-CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
+    volumes:
+      - docker-certs-client:/certs/client:ro
+      - jenkins-data:/var/jenkins_home
+      - /usr/bin/docker:/usr/bin/docker
+    networks:
+      - jenkins-net
     ports:
-      - "2376:2376"
+      - "8080:8080"
+      - "50000:50000"
+    restart: unless-stopped
+    depends_on:
+      - dind
 
 volumes:
-  jenkins_home:
-  dind_storage:
-  certs:
+  docker-certs-ca:
+  docker-certs-client:
+  jenkins-data:
 
 networks:
-  jenkins_dind:
+  jenkins_net:
     driver: bridge
