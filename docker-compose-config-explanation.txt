@@ -1,44 +1,64 @@
 Explanation of the docker-compose.yml Configuration Parameter Selection:
 Jenkins Service:
-	Image: jenkins/jenkins:lts
-		Reason: Uses the Long-Term Support (LTS) version of Jenkins for stability and long-term support with critical updates.
-	User: root
-		Reason: Ensures Jenkins has the necessary permissions to execute Docker commands within the container.
-	Container Name: jenkins
-		Reason: Simplifies identification and management of the Jenkins container.
-	Depends On: dind
-		Reason: Ensures that the dind (Docker-in-Docker) container is started before Jenkins to make Docker available for Jenkins operations.
-	Ports:
-		8080:8080 (Jenkins web interface)
-		50000:50000 (Jenkins agent communication)
-		Reason: Exposes Jenkins web interface and agent communication ports for external access.
-	Volumes:
-		./jenkins:/var/jenkins_home
-		/usr/bin/docker:/usr/bin/docker
-		Reason:
-			./jenkins:/var/jenkins_home mounts the host's jenkins directory to persist Jenkins data.
-			/usr/bin/docker:/usr/bin/docker allows Jenkins to access Docker commands.
-	Environment Variables: DOCKER_HOST: "tcp://dind:2375"
-		Reason: Configures Jenkins to communicate with the Docker daemon in the dind container.
-	Networks: jenkins_dind
-		Reason: Uses the jenkins_dind network for communication between Jenkins and Docker-in-Docker containers.
+Image: jenkins/jenkins:lts-jdk11
+Reason: The Long-Term Support (LTS) version of Jenkins with Java 11 (JDK11) ensures stability and long-term support while using a modern Java version. This is essential for running Jenkins with compatibility and security updates.
+User: root
+Reason: Jenkins runs as the root user inside the container to ensure it has the necessary permissions to execute Docker commands and perform other administrative tasks, like managing Jenkins configurations.
+Container Name: jenkins
+Reason: A named container makes it easy to identify the Jenkins service in the Docker environment, which simplifies management and debugging.
+Depends On: dind
+Reason: The depends_on directive ensures that the dind (Docker-in-Docker) service is started before Jenkins. This is necessary for Jenkins to have access to Docker as soon as it starts.
+Ports:
+8080:8080 (Jenkins web interface)
+50000:50000 (Jenkins agent communication)
+Reason:
+8080:8080 exposes the Jenkins web interface to the host machine, allowing external access to the Jenkins UI.
+50000:50000 allows communication between the Jenkins master and any Jenkins agents that connect to it.
+Volumes:
+docker-certs-client:/certs/client:ro
+jenkins-data:/var/jenkins_home
+/usr/bin/docker:/usr/bin/docker
+Reason:
+docker-certs-client:/certs/client:ro mounts the client-side Docker certificates in read-only mode so Jenkins can communicate securely with the Docker daemon.
+jenkins-data:/var/jenkins_home mounts the Jenkins data directory to persist Jenkins configuration and job data, ensuring that data is not lost when the container is restarted.
+/usr/bin/docker:/usr/bin/docker mounts the Docker CLI binary inside the Jenkins container so that Jenkins can run Docker commands.
+Environment Variables:
+DOCKER_HOST=tcp://docker:2375
+DOCKER_CERT_PATH=/certs/client
+DOCKER_TLS_VERIFY=0
+Reason:
+DOCKER_HOST=tcp://docker:2375: Configures Jenkins to use Docker via the dind container by communicating with the Docker daemon over TCP on port 2375.
+DOCKER_CERT_PATH=/certs/client: Points Jenkins to the location of the Docker client certificates for secure communication.
+DOCKER_TLS_VERIFY=0: Disables TLS verification as the communication between Jenkins and Docker is internal within the Docker network, making extra encryption unnecessary.
 
-DinD (Docker-In-Docker) Service:
-	Image: docker:20.10-dind
-		Reason: Provides Docker-in-Docker functionality using the specified Docker version.
-	User: root
-		Reason: Required to run Docker commands and perform privileged operations inside the container.
-	Container Name: dind
-		Reason: Clearly identifies the Docker-in-Docker container.
-	Privileged Mode: true
-		Reason: Necessary for running Docker within Docker to allow full Docker functionality.
-	Expose: 2375
-		Reason: Exposes Docker API on port 2375 for internal communication within the Docker network.
-	Networks: jenkins_dind
-		Reason: Connects to the same network as Jenkins to allow communication between the services.
-	Environment Variables: DOCKER_TLS_CERTDIR: ""
-		Reason: Disables Docker TLS certificates for internal communication.
-
+Docker-in-Docker (DinD) Service:
+Image: docker:20.10-dind
+Reason: This image provides the Docker daemon within a container (Docker-in-Docker), which is necessary for Jenkins to build, test, and deploy Docker containers.
+User: root
+Reason: Running the dind container as root is required to perform privileged operations within the container, like managing Docker images and containers.
+Privileged Mode: true
+Reason: Docker-in-Docker requires privileged mode to enable Docker to run inside a Docker container with full functionality.
+Expose: 2375
+Reason: Exposes the Docker API on port 2375 for internal communication between Jenkins and the Docker daemon running in the dind container.
+Volumes:
+docker-certs-ca:/certs/ca
+docker-certs-client:/certs/client
+jenkins-data:/var/jenkins_home
+Reason:
+docker-certs-ca:/certs/ca: Stores the CA certificates for Docker, enabling secure communication if needed in the future.
+docker-certs-client:/certs/client: Provides Docker client certificates for secure communication between Jenkins and Docker, if required.
+jenkins-data:/var/jenkins_home: Shares the Jenkins data directory with the dind container, allowing both services to have access to the same Jenkins data.
+Environment Variables:
+DOCKER_TLS_CERTDIR=""
+Reason: Disables TLS certificates for internal communication between Jenkins and Docker, simplifying the setup since they are running in the same network and encryption isn't strictly necessary.
 Networks:
-	jenkins_dind:
-		Reason: Creates a bridge network for communication between Jenkins and Docker-in-Docker services.
+jenkins_dind
+Reason: Creates a custom bridge network for communication between Jenkins and the Docker-in-Docker container (dind). This network isolates the two containers and ensures that Jenkins can communicate with Docker via the alias docker.
+Volumes:
+docker-certs-ca:
+Reason: Stores the CA certificates used for Docker TLS communication (currently not needed but prepared for future use).
+docker-certs-client:
+Reason: Holds the Docker client certificates used for secure communication between Jenkins and the Docker daemon (currently in use with read-only access).
+jenkins-data:
+Reason: Stores all Jenkins data, including job configurations, build history, and plugins. This ensures data persistence across container restarts.
+
